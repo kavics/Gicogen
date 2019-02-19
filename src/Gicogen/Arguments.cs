@@ -29,7 +29,15 @@ namespace Gicogen
 
         [CommandLineArgument(required: false, aliases: "", helpText: "Skips many nodes and starts the generaton from the given NodeId. Default: 0")]
         public long StartFrom { get; set; }
-        
+
+
+        [CommandLineArgument(required: false, aliases: "",
+            helpText: "Merges the given index subdirectory into the main index. " +
+                      "Parameter is the local name of the subindex" +
+                      "This option helps to avoid the memory over-consumption during merging a whole big index. " +
+                      "If this option is active, any other arguments are ignored except the '-index'.")]
+        public string MergeIndex { get; set; }
+
 
         private int _subIndexSize;
         /// <summary>

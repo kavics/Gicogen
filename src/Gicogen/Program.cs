@@ -90,7 +90,13 @@ namespace Gicogen
                 else
                 {
                     _arguments = arguments;
+
+                    SnTrace.SnTracers.Add(new ConsoleTracer());
+                    SnTrace.EnableAll();
+
                     Run();
+
+                    SnTrace.Flush();
                 }
             }
             catch (ParsingException e)
@@ -98,8 +104,6 @@ namespace Gicogen
                 Console.WriteLine(e.FormattedMessage);
                 Console.WriteLine(e.Result.GetHelpText());
             }
-
-
 
             if (Debugger.IsAttached)
             {
@@ -110,8 +114,11 @@ namespace Gicogen
 
         private static void Run()
         {
-            SnTrace.SnTracers.Add(new ConsoleTracer());
-            SnTrace.EnableAll();
+            if (!string.IsNullOrEmpty(_arguments.MergeIndex))
+            {
+                MergeIndex(_arguments.MergeIndex);
+                return;
+            }
 
             using (var op0 = SnTrace.StartOperation("APP"))
             {
@@ -144,9 +151,8 @@ namespace Gicogen
 
                 op0.Successful = true;
             }
-
-            SnTrace.Flush();
         }
+
         private static void DefineTables(DataSet dataSet)
         {
             var nodes = new DataTable(TableName.Nodes);
@@ -536,5 +542,15 @@ namespace Gicogen
             bytes.CopyTo(buffer, 3);
             return buffer;
         }
+
+
+        /* ====================================================================================== MERGE INDEX */
+
+        private static void MergeIndex(string subIndexName)
+        {
+            var indexOrganizer = new IndexOrganizer(_arguments.Index, 0, false);
+            indexOrganizer.MergeOneIndex(subIndexName);
+        }
+
     }
 }

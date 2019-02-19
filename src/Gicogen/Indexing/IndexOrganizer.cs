@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using IO = System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Lucene.Net.Analysis;
 using Lucene.Net.Analysis.Standard;
 using Lucene.Net.Documents;
@@ -17,7 +19,7 @@ namespace Gicogen.Indexing
 {
     internal class IndexOrganizer
     {
-        private Dictionary<string, string> _commitUserData = new Dictionary<string, string> { { "LastActivityId", "300" } };
+        private Dictionary<string, string> _commitUserData = new Dictionary<string, string> {{"LastActivityId", "300"}};
 
         private readonly string _rootIndexDirectory;
         private readonly int _subIndexSize;
@@ -35,6 +37,7 @@ namespace Gicogen.Indexing
             _subIndexSize = subIndexSize;
             _enabled = enabled;
         }
+
         public void InitializeIndex()
         {
             if (!_enabled)
@@ -83,43 +86,6 @@ namespace Gicogen.Indexing
             using (var op = SnTrace.StartOperation("Commit Lucene index"))
             {
                 _writer.Commit(_commitUserData);
-                op.Successful = true;
-            }
-        }
-
-        public void MergeIndexes()
-        {
-            if (!_enabled)
-                return;
-
-            _writer?.Commit(_commitUserData);
-            _writer?.Close();
-            _writer?.Dispose();
-
-            using (var op = SnTrace.StartOperation("Merge indexes"))
-            {
-                CreateWriter(_rootIndexDirectory, true);
-
-                var directories = IO.Directory.GetDirectories(_rootIndexDirectory);
-                var readers = directories
-                    .Select(p => IndexReader.Open(FSDirectory.Open(new FileInfo(p)), true))
-                    .ToArray();
-
-                SnTrace.Write($"Merging {readers.Length} indexes...");
-                _writer.AddIndexes(readers);
-
-                SnTrace.Write("Closing subindexes...");
-                foreach (var reader in readers)
-                    reader.Dispose();
-
-                SnTrace.Write("Delete subindexes...");
-                foreach (var directory in directories)
-                {
-                    //foreach (var file in IO.Directory.GetFiles(directory))
-                    //    File.Delete(file);
-                    IO.Directory.Delete(directory, true);
-                }
-
                 op.Successful = true;
             }
         }
@@ -325,6 +291,110 @@ namespace Gicogen.Indexing
             _writer?.Commit(_commitUserData);
             _writer?.Close();
             _writer?.Dispose();
+        }
+
+
+        /* ======================================================================= MERGE INDEXES */
+
+        public void MergeIndexes()
+        {
+            //if (!_enabled)
+            return;
+
+            _writer?.Commit(_commitUserData);
+            _writer?.Close();
+            _writer?.Dispose();
+
+            using (var op = SnTrace.StartOperation("Merge indexes"))
+            {
+                CreateWriter(_rootIndexDirectory, true);
+
+                var directories = IO.Directory.GetDirectories(_rootIndexDirectory);
+                var readers = directories
+                    .Select(p => IndexReader.Open(FSDirectory.Open(new FileInfo(p)), true))
+                    .ToArray();
+
+                SnTrace.Write($"Merging {readers.Length} indexes...");
+                _writer.AddIndexes(readers);
+
+                SnTrace.Write("Closing subindexes...");
+                foreach (var reader in readers)
+                    reader.Dispose();
+
+                SnTrace.Write("Delete subindexes...");
+                foreach (var directory in directories)
+                {
+                    //foreach (var file in IO.Directory.GetFiles(directory))
+                    //    File.Delete(file);
+                    IO.Directory.Delete(directory, true);
+                }
+
+                op.Successful = true;
+            }
+        }
+
+        public void MergeOneIndex(string subIndexName)
+        {
+            // Open or create the main index
+            CreateWriter(_rootIndexDirectory, IO.Directory.GetFiles(_rootIndexDirectory).Length == 0);
+            var mainReader = _writer.GetReader();
+            SnTrace.Write("Document count before merge: " + _writer.MaxDoc());
+
+            if (IsMerged(subIndexName, mainReader, out IndexReader reader))
+            {
+                SnTrace.Write("CANNOT MERGE THE SUBINDEX {0}.", subIndexName);
+                return;
+            }
+
+            using (var op = SnTrace.StartOperation("Merging subindex " + subIndexName))
+            {
+                var timer = new System.Timers.Timer(1000);
+                timer.Elapsed += Timer_Elapsed;
+                _mergeStart = DateTime.UtcNow;
+                timer.Start();
+
+                _writer.AddIndexes(new[] { reader });
+                _writer.Commit();
+                _writer.Close();
+
+                timer.Stop();
+                timer.Elapsed -= Timer_Elapsed;
+                timer.Dispose();
+
+                op.Successful = true;
+            }
+
+            SnTrace.Write("Document count after merge: " + _writer.MaxDoc());
+
+            reader.Dispose();
+        }
+
+        private DateTime _mergeStart;
+        private void Timer_Elapsed(object sender, System.Timers.ElapsedEventArgs e)
+        {
+            Console.Write($"Progress: {(DateTime.UtcNow - _mergeStart):hh\\:mm\\:ss}. Docs: >{_writer.NumDocs()}\r");
+        }
+
+        private bool IsMerged(string subIndexName, IndexReader mainIndexReader, out IndexReader subIndexReader)
+        {
+            var subIndexDirectory = Path.Combine(_rootIndexDirectory, subIndexName);
+            subIndexReader = IndexReader.Open(FSDirectory.Open(new FileInfo(subIndexDirectory)), true);
+
+            var count = subIndexReader.NumDocs();
+            if (count == 0)
+                return true;
+
+            var firstDoc = subIndexReader.Document(0);
+            var rawVersionId = firstDoc.Get(IndexFieldName.VersionId);
+            var versionId = int.Parse(rawVersionId);
+
+            var term = new Term(IndexFieldName.VersionId, NumericUtils.IntToPrefixCoded(versionId));
+            var termDocs = mainIndexReader.TermDocs(term);
+            var found = termDocs.Next();
+
+            termDocs.Close();
+
+            return found;
         }
     }
 }
