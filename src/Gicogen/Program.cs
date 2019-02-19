@@ -139,7 +139,7 @@ namespace Gicogen
                         CreateTableData(dataSet, indexOrganizer);
                         op1.Successful = true;
                     }
-                    indexOrganizer.MergeIndexes();
+                    indexOrganizer.MergeAllIndexes();
                 }
                 finally
                 {
@@ -546,10 +546,10 @@ namespace Gicogen
 
         /* ====================================================================================== MERGE INDEX */
 
-        private static void MergeIndex(string subIndexName)
+        private static void MergeIndex(string subIndexNames)
         {
             var indexOrganizer = new IndexOrganizer(_arguments.Index, 0, false);
-            indexOrganizer.MergeOneIndex(subIndexName);
+            indexOrganizer.MergeIndex(subIndexNames);
         }
 
     }

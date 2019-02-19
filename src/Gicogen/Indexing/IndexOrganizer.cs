@@ -296,7 +296,7 @@ namespace Gicogen.Indexing
 
         /* ======================================================================= MERGE INDEXES */
 
-        public void MergeIndexes()
+        public void MergeAllIndexes()
         {
             //if (!_enabled)
             return;
@@ -333,27 +333,28 @@ namespace Gicogen.Indexing
             }
         }
 
-        public void MergeOneIndex(string subIndexName)
+        public void MergeIndex(string subIndexNames)
         {
             // Open or create the main index
             CreateWriter(_rootIndexDirectory, IO.Directory.GetFiles(_rootIndexDirectory).Length == 0);
             var mainReader = _writer.GetReader();
             SnTrace.Write("Document count before merge: " + _writer.MaxDoc());
 
-            if (IsMerged(subIndexName, mainReader, out IndexReader reader))
+            var subReaders = GetSubReaders(mainReader, subIndexNames, out var realSubIndexNames);
+            if (subReaders.Length == 0)
             {
-                SnTrace.Write("CANNOT MERGE THE SUBINDEX {0}.", subIndexName);
+                SnTrace.Write("There is no any mergeable subindex.");
                 return;
             }
 
-            using (var op = SnTrace.StartOperation("Merging subindex " + subIndexName))
+            using (var op = SnTrace.StartOperation("Merging subindexes: " + realSubIndexNames))
             {
                 var timer = new System.Timers.Timer(1000);
                 timer.Elapsed += Timer_Elapsed;
                 _mergeStart = DateTime.UtcNow;
                 timer.Start();
 
-                _writer.AddIndexes(new[] { reader });
+                _writer.AddIndexes(subReaders);
                 _writer.Commit();
                 _writer.Close();
 
@@ -366,7 +367,50 @@ namespace Gicogen.Indexing
 
             SnTrace.Write("Document count after merge: " + _writer.MaxDoc());
 
-            reader.Dispose();
+            foreach(var subReader in subReaders)
+                subReader.Dispose();
+        }
+
+        private IndexReader[] GetSubReaders(IndexReader mainReader, string subIndexNames, out string realSubIndexNames)
+        {
+            var readers = new List<IndexReader>();
+            var realSubdirNames = new List<string>();
+            var subDirNames = subIndexNames.Split(',');
+            foreach (var subDirName in subDirNames)
+            {
+                // Open subdirectory as a read-only index
+                var subIndexDirectory = Path.Combine(_rootIndexDirectory, subDirName);
+                var reader = IndexReader.Open(FSDirectory.Open(new FileInfo(subIndexDirectory)), true);
+
+                // Skip processing if the index is empty
+                if (reader.NumDocs() < 1)
+                {
+                    SnTrace.Write($"Subindex '{subDirName}' will be skipped because it is empty.");
+                    continue;
+                }
+
+                // Search the first document of the subIndex in the main index
+                var firstDoc = reader.Document(0);
+                var rawVersionId = firstDoc.Get(IndexFieldName.VersionId);
+                var versionId = int.Parse(rawVersionId);
+                var term = new Term(IndexFieldName.VersionId, NumericUtils.IntToPrefixCoded(versionId));
+                var termDocs = mainReader.TermDocs(term);
+                var found = termDocs.Next();
+                termDocs.Close();
+
+                // Skip processing if the first document of the subIndex in the main index
+                if (found)
+                {
+                    SnTrace.Write($"Subindex '{subDirName}' will be skipped because it has already been merged.");
+                    continue;
+                }
+
+                // Add reader to process.
+                readers.Add(reader);
+                realSubdirNames.Add(subDirName);
+            }
+            realSubIndexNames = string.Join(",", realSubdirNames);
+            return readers.ToArray();
         }
 
         private DateTime _mergeStart;
@@ -375,26 +419,5 @@ namespace Gicogen.Indexing
             Console.Write($"Progress: {(DateTime.UtcNow - _mergeStart):hh\\:mm\\:ss}. Docs: >{_writer.NumDocs()}\r");
         }
 
-        private bool IsMerged(string subIndexName, IndexReader mainIndexReader, out IndexReader subIndexReader)
-        {
-            var subIndexDirectory = Path.Combine(_rootIndexDirectory, subIndexName);
-            subIndexReader = IndexReader.Open(FSDirectory.Open(new FileInfo(subIndexDirectory)), true);
-
-            var count = subIndexReader.NumDocs();
-            if (count == 0)
-                return true;
-
-            var firstDoc = subIndexReader.Document(0);
-            var rawVersionId = firstDoc.Get(IndexFieldName.VersionId);
-            var versionId = int.Parse(rawVersionId);
-
-            var term = new Term(IndexFieldName.VersionId, NumericUtils.IntToPrefixCoded(versionId));
-            var termDocs = mainIndexReader.TermDocs(term);
-            var found = termDocs.Next();
-
-            termDocs.Close();
-
-            return found;
-        }
     }
 }
