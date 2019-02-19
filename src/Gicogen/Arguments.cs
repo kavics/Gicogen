@@ -27,7 +27,7 @@ namespace Gicogen
         }
 
 
-        [CommandLineArgument(required: false, aliases: "Start,S", helpText: "Skips many nodes and starts the generaton from the given NodeId. Default: 0")]
+        [CommandLineArgument(required: false, aliases: "", helpText: "Skips many nodes and starts the generaton from the given NodeId. Default: 0")]
         public long StartFrom { get; set; }
         
 
@@ -35,7 +35,7 @@ namespace Gicogen
         /// <summary>
         /// Gets or sets the maximum count of one index directory (default 1 000 000). Finally the sub-indexes will be merged to one big index.
         /// </summary>
-        [CommandLineArgument(required: false, aliases: "I", helpText: "Count of index documents per subindex. Default: 1 000 000")]
+        [CommandLineArgument(required: false, aliases: "", helpText: "Count of index documents per subindex. Default: 1 000 000")]
         public int SubIndexSize
         {
             get
@@ -66,7 +66,7 @@ namespace Gicogen
         /// <summary>
         /// Gets or sets the full path of the initial index directory.
         /// </summary>
-        [CommandLineArgument(required: false, aliases: "I", helpText: "Full path of the initial index. Default is in the configuration.")]
+        [CommandLineArgument(required: false, aliases: "", helpText: "Full path of the initial index. Default is in the configuration.")]
         public string Index
         {
             get
@@ -89,7 +89,7 @@ namespace Gicogen
         /// <summary>
         /// Gets or sets the connectionString of the database.
         /// </summary>
-        [CommandLineArgument(required: false, aliases: "Db", helpText: "Connectionstring. Default is in the configuration.")]
+        [CommandLineArgument(required: false, aliases: "", helpText: "Connectionstring. Default is in the configuration.")]
         public string Database
         {
             get
