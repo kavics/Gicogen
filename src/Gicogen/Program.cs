@@ -427,7 +427,7 @@ namespace Gicogen
             row.SetField("FileNameWithoutExtension", tNode.NameWithoutExtension);
             row.SetField("Extension", ".txt");
             row.SetField("Size", tNode.Stream.LongLength);
-            row.SetField("Stream", tNode.Stream);
+            //row.SetField("Stream", tNode.Stream);
             row.SetField("CreationDate", DateTime.UtcNow);
         }
         private static void SetEntityRow(DataRow row, _TreeNode tNode, int userId)
